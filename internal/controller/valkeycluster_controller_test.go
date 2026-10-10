@@ -1711,3 +1711,20 @@ var _ = Describe("buildClusterValkeyNode scheduling passthrough", func() {
 		Expect(node.Spec.PriorityClassName).To(BeEmpty())
 	})
 })
+
+var _ = Describe("slotGapsFilledNote", func() {
+	It("fits an event message however many gaps a restore leaves", func() {
+		// Every other slot unowned: the most ranges a restore can leave.
+		var ranges []valkey.SlotsRange
+		for slot := 0; slot < 16384; slot += 2 {
+			ranges = append(ranges, valkey.SlotsRange{Start: slot, End: slot})
+		}
+		Expect(describeSlotGaps(ranges)).To(Equal("8192 slots in 8192 ranges"))
+		Expect(describeSlotGaps([]valkey.SlotsRange{{Start: 0, End: 29}, {Start: 31, End: 130}})).
+			To(Equal("130 slots in 2 ranges"))
+
+		// The API server rejects an event whose message is over 1024 characters.
+		note := fmt.Sprintf(slotGapsFilledNote, describeSlotGaps(ranges), "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:6379")
+		Expect(len(note)).To(BeNumerically("<=", 1024))
+	})
+})

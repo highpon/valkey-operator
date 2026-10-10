@@ -1415,13 +1415,30 @@ func (r *ValkeyClusterReconciler) fillSlotGapsAfterRestore(ctx context.Context, 
 		}
 		log.Info("assign slots left unowned by the snapshot load to their neighbour", "node", node.Address, "ranges", ranges)
 		if err := node.Client.Do(ctx, cmd.Build()).Error(); err != nil {
-			r.Recorder.Eventf(cluster, nil, corev1.EventTypeWarning, "SlotAssignmentFailed", "AssignSlots", "Failed to assign slots %s to %v: %v", valkey.FormatSlotsRanges(ranges), node.Address, err)
+			r.Recorder.Eventf(cluster, nil, corev1.EventTypeWarning, "SlotAssignmentFailed", "AssignSlots", "Failed to assign %s to %v: %v", describeSlotGaps(ranges), node.Address, err)
 			return assigned, err
 		}
-		r.Recorder.Eventf(cluster, nil, corev1.EventTypeNormal, "SlotGapsFilled", "AssignSlots", "Assigned slots %s left unowned by the restore to %v", valkey.FormatSlotsRanges(ranges), node.Address)
+		r.Recorder.Eventf(cluster, nil, corev1.EventTypeNormal, "SlotGapsFilled", "AssignSlots", slotGapsFilledNote, describeSlotGaps(ranges), node.Address)
 		assigned++
 	}
 	return assigned, nil
+}
+
+// slotGapsFilledNote is the SlotGapsFilled event message: the slots handed
+// out, as describeSlotGaps puts them, and the primary they went to.
+const slotGapsFilledNote = "Assigned %s left unowned by the restore to %v"
+
+// describeSlotGaps sums up the slots handed out after a restore for an event.
+// The gaps between the slots a snapshot holds keys for can run to thousands
+// of ranges, and the API server rejects an event message over 1024
+// characters, so the ranges are counted rather than listed; the log line
+// before the assignment has them all.
+func describeSlotGaps(ranges []valkey.SlotsRange) string {
+	slots := 0
+	for _, r := range ranges {
+		slots += r.End - r.Start + 1
+	}
+	return fmt.Sprintf("%d slots in %d ranges", slots, len(ranges))
 }
 
 // errPrimaryNotReady is returned by replicateToShardPrimary when the
